@@ -43,6 +43,19 @@ wss.on('connection', (ws) => {
         match();
         break;
       }
+      case 'report': {
+        const reporter = peers.get(id);
+        const reportedId = msg.target;
+        console.log(`REPORT: User ${id} reported user ${reportedId}`);
+        if (reporter && reporter.partner === reportedId) {
+          const reported = peers.get(reportedId);
+          if (reported) {
+            try { reported.ws.send(JSON.stringify({ type: 'reported' })); } catch {}
+          }
+          try { reporter.ws.send(JSON.stringify({ type: 'report_ack' })); } catch {}
+        }
+        break;
+      }
     }
   });
 
