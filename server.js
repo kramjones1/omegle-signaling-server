@@ -58,8 +58,8 @@ function match() {
     pa.partner = b;
     pb.partner = a;
     const room = uuidv4().slice(0, 8);
-    pa.ws.send(JSON.stringify({ type: 'matched', partner: b, room }));
-    pb.ws.send(JSON.stringify({ type: 'matched', partner: a, room }));
+    pa.ws.send(JSON.stringify({ type: 'matched', partner: b, room, role: 'offer' }));
+    pb.ws.send(JSON.stringify({ type: 'matched', partner: a, room, role: 'answer' }));
   }
 }
 
