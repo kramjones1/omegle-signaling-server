@@ -19,6 +19,7 @@ wss.on('connection', (ws) => {
 
     switch (msg.type) {
       case 'find': {
+        if (!peers.has(id)) peers.set(id, { ws, id, partner: null });
         queue.push(id);
         match();
         break;
