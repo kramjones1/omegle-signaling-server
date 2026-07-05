@@ -5,11 +5,11 @@ const PORT = process.env.PORT || 3000;
 const wss = new WebSocketServer({ port: PORT });
 
 const queue = [];
-const peers = new Map(); // id -> { ws, id }
+const peers = new Map(); // id -> { ws, id, userId, partner }
 
 wss.on('connection', (ws) => {
   const id = uuidv4().slice(0, 8);
-  peers.set(id, { ws, id, partner: null });
+  peers.set(id, { ws, id, userId: null, partner: null });
 
   ws.send(JSON.stringify({ type: 'connected', id }));
 
@@ -19,7 +19,9 @@ wss.on('connection', (ws) => {
 
     switch (msg.type) {
       case 'find': {
-        if (!peers.has(id)) peers.set(id, { ws, id, partner: null });
+        if (!peers.has(id)) peers.set(id, { ws, id, userId: null, partner: null });
+        const p = peers.get(id);
+        p.userId = msg.userId || null;
         queue.push(id);
         match();
         break;
@@ -72,8 +74,8 @@ function match() {
     pa.partner = b;
     pb.partner = a;
     const room = uuidv4().slice(0, 8);
-    pa.ws.send(JSON.stringify({ type: 'matched', partner: b, room, role: 'offer' }));
-    pb.ws.send(JSON.stringify({ type: 'matched', partner: a, room, role: 'answer' }));
+    pa.ws.send(JSON.stringify({ type: 'matched', partner: b, userId: pb.userId, room, role: 'offer' }));
+    pb.ws.send(JSON.stringify({ type: 'matched', partner: a, userId: pa.userId, room, role: 'answer' }));
   }
 }
 
