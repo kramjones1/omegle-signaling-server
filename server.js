@@ -2,10 +2,24 @@ const { WebSocketServer } = require('ws');
 const { v4: uuidv4 } = require('uuid');
 
 const PORT = process.env.PORT || 3000;
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://btkcubibosbtpxcronnd.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0a2N1Ymlib3NidHB4Y3Jvbm5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMzI1ODAsImV4cCI6MjA5ODYwODU4MH0.IqR7dJbZJm83c_XHz923GQrBWdf5GCaNDYMPg6z8kj0';
+
 const wss = new WebSocketServer({ port: PORT });
 
 const queue = [];
 const peers = new Map(); // id -> { ws, id, userId, partner }
+
+async function isBanned(userId) {
+  if (!userId) return false;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/banned_users?user_id=eq.${userId}`, {
+      headers: { 'apikey': SUPABASE_ANON_KEY },
+    });
+    const data = await res.json();
+    return Array.isArray(data) && data.length > 0;
+  } catch { return false; }
+}
 
 wss.on('connection', (ws) => {
   const id = uuidv4().slice(0, 8);
@@ -13,7 +27,7 @@ wss.on('connection', (ws) => {
 
   ws.send(JSON.stringify({ type: 'connected', id }));
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
 
@@ -22,6 +36,13 @@ wss.on('connection', (ws) => {
         if (!peers.has(id)) peers.set(id, { ws, id, userId: null, partner: null });
         const p = peers.get(id);
         p.userId = msg.userId || null;
+        if (p.userId) {
+          const banned = await isBanned(p.userId);
+          if (banned) {
+            try { ws.send(JSON.stringify({ type: 'banned', reason: 'Your account has been suspended.' })); } catch {}
+            return;
+          }
+        }
         queue.push(id);
         match();
         break;
@@ -53,6 +74,14 @@ wss.on('connection', (ws) => {
           const reported = peers.get(reportedId);
           if (reported) {
             try { reported.ws.send(JSON.stringify({ type: 'reported' })); } catch {}
+            const reporterUid = reporter.userId || 'unknown';
+            const reportedUid = reported.userId || 'unknown';
+            const msgText = msg.messageText || 'Live call harassment report';
+            fetch(`${SUPABASE_URL}/rest/v1/reported_messages`, {
+              method: 'POST',
+              headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+              body: JSON.stringify({ reporter_id: reporterUid, reported_user_id: reportedUid, message_text: msgText, call_session_id: msg.room || '' }),
+            }).catch(e => console.log('Failed to save report:', e));
           }
           try { reporter.ws.send(JSON.stringify({ type: 'report_ack' })); } catch {}
         }
