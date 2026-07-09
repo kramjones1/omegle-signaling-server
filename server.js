@@ -13,12 +13,31 @@ const peers = new Map(); // id -> { ws, id, userId, partner }
 async function isBanned(userId) {
   if (!userId) return false;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/banned_users?user_id=eq.${userId}`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/is_user_banned`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ check_id: userId }),
+    });
+    const data = await res.json();
+    return data === true;
+  } catch { return false; }
+}
+
+async function isUnderage(userId) {
+  if (!userId) return true;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/chat_profiles?user_id=eq.${userId}&select=date_of_birth`, {
       headers: { 'apikey': SUPABASE_ANON_KEY },
     });
     const data = await res.json();
-    return Array.isArray(data) && data.length > 0;
-  } catch { return false; }
+    if (!Array.isArray(data) || data.length === 0 || !data[0].date_of_birth) return true;
+    const bd = new Date(data[0].date_of_birth);
+    const t = new Date();
+    let age = t.getFullYear() - bd.getFullYear();
+    const m = t.getMonth() - bd.getMonth();
+    if (m < 0 || (m === 0 && t.getDate() < bd.getDate())) age--;
+    return age < 18;
+  } catch { return true; }
 }
 
 wss.on('connection', (ws) => {
@@ -37,9 +56,13 @@ wss.on('connection', (ws) => {
         const p = peers.get(id);
         p.userId = msg.userId || null;
         if (p.userId) {
-          const banned = await isBanned(p.userId);
+          const [banned, underage] = await Promise.all([isBanned(p.userId), isUnderage(p.userId)]);
           if (banned) {
             try { ws.send(JSON.stringify({ type: 'banned', reason: 'Your account has been suspended.' })); } catch {}
+            return;
+          }
+          if (underage) {
+            try { ws.send(JSON.stringify({ type: 'age_restricted', reason: 'Video chat is restricted to users 18 and older.' })); } catch {}
             return;
           }
         }
@@ -69,7 +92,6 @@ wss.on('connection', (ws) => {
       case 'report': {
         const reporter = peers.get(id);
         const reportedId = msg.target;
-        console.log(`REPORT: User ${id} reported user ${reportedId}`);
         if (reporter && reporter.partner === reportedId) {
           const reported = peers.get(reportedId);
           if (reported) {
@@ -81,7 +103,7 @@ wss.on('connection', (ws) => {
               method: 'POST',
               headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
               body: JSON.stringify({ reporter_id: reporterUid, reported_user_id: reportedUid, message_text: msgText, call_session_id: msg.room || '' }),
-            }).catch(e => console.log('Failed to save report:', e));
+            }).catch(() => {});
           }
           try { reporter.ws.send(JSON.stringify({ type: 'report_ack' })); } catch {}
         }
