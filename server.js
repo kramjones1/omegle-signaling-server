@@ -8,6 +8,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIs
 
 const queue = [];
 const peers = new Map(); // id -> { ws, id, userId, partner }
+const frames = new Map(); // userId -> Buffer (latest JPEG frame)
 
 async function isBanned(userId) {
   if (!userId) return false;
@@ -82,6 +83,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.url.startsWith('/api/live/frame/') && req.method === 'GET') {
+    const userId = req.url.split('/api/live/frame/')[1];
+    const frame = frames.get(userId);
+    if (frame) {
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-cache, no-store, must-revalidate' });
+      res.end(frame);
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+    return;
+  }
+
   res.writeHead(404);
   res.end('Not found');
 });
@@ -137,6 +151,14 @@ wss.on('connection', (ws) => {
         match();
         break;
       }
+      case 'frame': {
+        const p = peers.get(id);
+        if (p && p.userId && msg.data) {
+          const buf = Buffer.from(msg.data, 'base64');
+          frames.set(p.userId, buf);
+        }
+        break;
+      }
       case 'report': {
         const reporter = peers.get(id);
         const reportedId = msg.target;
@@ -181,6 +203,7 @@ function match() {
 function disconnect(id) {
   const p = peers.get(id);
   if (!p) return;
+  if (p.userId) frames.delete(p.userId);
   if (p.partner) {
     const partner = peers.get(p.partner);
     if (partner) {
