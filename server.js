@@ -1,11 +1,10 @@
 const { WebSocketServer } = require('ws');
 const { v4: uuidv4 } = require('uuid');
+const http = require('http');
 
 const PORT = process.env.PORT || 3000;
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://btkcubibosbtpxcronnd.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0a2N1Ymlib3NidHB4Y3Jvbm5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMzI1ODAsImV4cCI6MjA5ODYwODU4MH0.IqR7dJbZJm83c_XHz923GQrBWdf5GCaNDYMPg6z8kj0';
-
-const wss = new WebSocketServer({ port: PORT });
 
 const queue = [];
 const peers = new Map(); // id -> { ws, id, userId, partner }
@@ -41,6 +40,53 @@ async function isUnderage(userId) {
     return age < 18;
   } catch { return true; }
 }
+
+async function getProfile(userId) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/chat_profiles?user_id=eq.${userId}&select=display_name,avatar_url,bio`, {
+      headers: { 'apikey': SUPABASE_ANON_KEY },
+    });
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) return data[0];
+  } catch {}
+  return null;
+}
+
+// HTTP server for API endpoints
+const server = http.createServer(async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+  if (req.url === '/api/live' && req.method === 'GET') {
+    const liveUsers = [];
+    const seen = new Set();
+
+    for (const [, p] of peers) {
+      if (p.partner && p.userId && !seen.has(p.userId)) {
+        seen.add(p.userId);
+        const profile = await getProfile(p.userId);
+        liveUsers.push({
+          id: p.id,
+          user_id: p.userId,
+          name: profile?.display_name || 'Anonymous',
+          avatar: profile?.avatar_url || '',
+          bio: profile?.bio || '',
+        });
+      }
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(liveUsers));
+    return;
+  }
+
+  res.writeHead(404);
+  res.end('Not found');
+});
+
+const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws) => {
   const id = uuidv4().slice(0, 8);
@@ -147,4 +193,4 @@ function disconnect(id) {
   if (idx >= 0) queue.splice(idx, 1);
 }
 
-console.log(`Signaling server running on port ${PORT}`);
+server.listen(PORT, () => console.log(`Signaling server running on port ${PORT}`));
