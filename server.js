@@ -84,7 +84,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.url.startsWith('/api/live/frame/') && req.method === 'GET') {
-    const userId = req.url.split('/api/live/frame/')[1];
+    const userId = req.url.split('/api/live/frame/')[1].split('?')[0];
     const frame = frames.get(userId);
     if (frame) {
       res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-cache, no-store, must-revalidate' });
