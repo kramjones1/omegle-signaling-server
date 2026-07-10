@@ -26,12 +26,14 @@ async function isBanned(userId) {
 async function isUnderage(userId) {
   if (!userId) return true;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/chat_profiles?user_id=eq.${userId}&select=date_of_birth`, {
-      headers: { 'apikey': SUPABASE_ANON_KEY },
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_dob`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_id: userId }),
     });
     const data = await res.json();
-    if (!Array.isArray(data) || data.length === 0 || !data[0].date_of_birth) return true;
-    const bd = new Date(data[0].date_of_birth);
+    if (!data) return true;
+    const bd = new Date(data);
     const t = new Date();
     let age = t.getFullYear() - bd.getFullYear();
     const m = t.getMonth() - bd.getMonth();
