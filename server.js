@@ -170,11 +170,13 @@ wss.on('connection', (ws) => {
             const reportedUid = reported.userId || 'unknown';
             const msgText = msg.messageText || 'Live call harassment report';
             if (reporterUid !== 'unknown' && reportedUid !== 'unknown') {
-              fetch(`${SUPABASE_URL}/rest/v1/rpc/submit_report`, {
+              const reportBody = JSON.stringify({ reporter_id: reporterUid, reported_user_id: reportedUid, message_text: msgText, call_session_id: msg.room || '' });
+              fetch(`${SUPABASE_URL}/rest/v1/reported_messages`, {
                 method: 'POST',
-                headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ p_reporter_id: reporterUid, p_reported_id: reportedUid, p_message_text: msgText, p_session_id: msg.room || '' }),
-              }).then(async r => { if (!r.ok) console.error('submit_report failed:', r.status, await r.text()); }).catch(e => console.error('submit_report error:', e));
+                headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+                body: reportBody,
+              }).catch(() => {});
+            }
             }
           }
           try { reporter.ws.send(JSON.stringify({ type: 'report_ack' })); } catch {}
