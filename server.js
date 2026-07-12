@@ -206,12 +206,19 @@ setInterval(async () => {
 }, 15000);
 
 function match() {
-  while (queue.length >= 2) {
+  let attempts = 0;
+  while (queue.length >= 2 && attempts < queue.length * 2) {
     const a = queue.shift();
     const b = queue.shift();
     const pa = peers.get(a);
     const pb = peers.get(b);
-    if (!pa || !pb) { if (pa) queue.unshift(a); continue; }
+    if (!pa || !pb) { if (pa) queue.push(a); attempts++; continue; }
+    if (pa.userId && pb.userId && pa.userId === pb.userId) {
+      queue.push(a, b);
+      attempts++;
+      continue;
+    }
+    attempts = 0;
     pa.partner = b;
     pb.partner = a;
     const room = uuidv4().slice(0, 8);
