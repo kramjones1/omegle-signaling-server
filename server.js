@@ -187,6 +187,24 @@ wss.on('connection', (ws) => {
   ws.on('close', () => disconnect(id));
 });
 
+// Periodic ban check for active calls (every 15s)
+setInterval(async () => {
+  const checks = [];
+  for (const [id, p] of peers) {
+    if (p.partner && p.userId) {
+      checks.push(
+        isBanned(p.userId).then(banned => {
+          if (banned) {
+            try { p.ws.send(JSON.stringify({ type: 'banned', reason: 'Your account has been suspended.' })); } catch {}
+            disconnect(id);
+          }
+        })
+      );
+    }
+  }
+  await Promise.allSettled(checks);
+}, 15000);
+
 function match() {
   while (queue.length >= 2) {
     const a = queue.shift();
