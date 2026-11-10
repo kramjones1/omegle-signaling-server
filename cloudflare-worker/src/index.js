@@ -2,7 +2,10 @@ import { DurableObject } from "cloudflare:workers";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
-  "cache-control": "no-store"
+  "cache-control": "no-store",
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers": "authorization, content-type",
+  "access-control-allow-methods": "GET, OPTIONS"
 };
 
 function json(data, status = 200) {
@@ -86,6 +89,9 @@ async function profile(env, userId, token) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: JSON_HEADERS });
+    }
     if (url.pathname === "/health" && request.method === "GET") {
       return json({
         status: "ok",
@@ -97,7 +103,7 @@ export default {
 
     if (url.pathname === "/" && request.method === "GET") {
       return new Response("Omegle signaling service", {
-        headers: { "content-type": "text/plain; charset=utf-8" }
+        headers: { "content-type": "text/plain; charset=utf-8", "access-control-allow-origin": "*" }
       });
     }
 
@@ -186,7 +192,8 @@ export class Matchmaker extends DurableObject {
       return new Response(bytes, {
         headers: {
           "content-type": "image/jpeg",
-          "cache-control": "no-cache, no-store, must-revalidate"
+          "cache-control": "no-cache, no-store, must-revalidate",
+          "access-control-allow-origin": "*"
         }
       });
     }
@@ -353,7 +360,7 @@ export class Matchmaker extends DurableObject {
         if (msg.data && typeof msg.data === "string" && msg.data.length <= 1400000) {
           const base64 = msg.data.replace(/^data:image\/jpeg;base64,/, "");
           if (/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
-            await this.ctx.storage.put(`frame:${data.userId}`, base64, { expirationTtl: 60 });
+            await this.ctx.storage.put(`frame:${data.userId}`, base64);
           }
         }
         break;
@@ -410,6 +417,7 @@ export class Matchmaker extends DurableObject {
     }
     const queue = (await this.ctx.storage.get("queue") || []).filter((id) => id !== data.id);
     await this.ctx.storage.put("queue", queue);
+    if (data.userId) await this.ctx.storage.delete(`frame:${data.userId}`);
     await this.updateBanAlarm();
   }
 
