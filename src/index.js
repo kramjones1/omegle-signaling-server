@@ -101,7 +101,8 @@ export default {
       });
     }
 
-    if (url.pathname === "/" && request.method === "GET") {
+    if (url.pathname === "/" && request.method === "GET" &&
+        request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
       return new Response("Omegle signaling service", {
         headers: { "content-type": "text/plain; charset=utf-8", "access-control-allow-origin": "*" }
       });
