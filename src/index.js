@@ -150,6 +150,11 @@ ws.onclose=(e)=>log("Closed: code="+e.code+" reason="+(e.reason||"(none)"));
       if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
     }
 
+    const mainWorkerKey = env.SUPABASE_ANON_KEY || "";
+    console.log("Supabase key check at Worker entrypoint:", {
+      present: Boolean(mainWorkerKey),
+      length: mainWorkerKey.length
+    });
     const id = env.MATCHMAKER.idFromName("global-matchmaker");
     return env.MATCHMAKER.get(id).fetch(request);
   }
@@ -158,6 +163,11 @@ ws.onclose=(e)=>log("Closed: code="+e.code+" reason="+(e.reason||"(none)"));
 export class Matchmaker extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
+    const durableObjectKey = env.SUPABASE_ANON_KEY || "";
+    console.log("Supabase key check in Matchmaker constructor:", {
+      present: Boolean(durableObjectKey),
+      length: durableObjectKey.length
+    });
     this.ctx.getWebSockets().forEach((ws) => {
       const attachment = ws.deserializeAttachment();
       if (attachment) this.restoreSession(ws, attachment);
