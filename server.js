@@ -251,7 +251,7 @@ function match() {
     const b = queue.shift();
     const pa = peers.get(a);
     const pb = peers.get(b);
-    if (!pa || !pb || !pa.ws.readyState || !pb.ws.readyState) { attempts++; continue; }
+    if (!pa || !pb || pa.ws.readyState !== 1 || pb.ws.readyState !== 1) { attempts++; continue; }
     if (pa.userId === pb.userId) {
       queue.push(a, b);
       attempts++;
