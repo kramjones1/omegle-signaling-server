@@ -23,9 +23,16 @@ function newId() {
 
 async function authUser(env, token) {
   if (!token) return null;
+  const apiKey = env.SUPABASE_ANON_KEY || "";
+  console.log("Supabase API key runtime check:", {
+    present: Boolean(apiKey),
+    length: apiKey.length,
+    startsWithExpectedPrefix: apiKey.startsWith("eyJhbGci"),
+    endsWithExpectedSuffix: apiKey.endsWith("Pg6z8kj0")
+  });
   const response = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
     headers: {
-      apikey: env.SUPABASE_ANON_KEY,
+      apikey: apiKey,
       authorization: `Bearer ${token}`
     }
   });
