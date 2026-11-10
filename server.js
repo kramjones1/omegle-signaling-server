@@ -45,7 +45,7 @@ async function isBanned(userId, accessToken) {
 async function isUnderage(userId, accessToken) {
   if (!userId || !accessToken) throw new Error('Missing authenticated identity for age check');
   const dob = await rpc(accessToken, 'get_dob', { target_id: userId });
-  if (typeof dob !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dob)) return true;
+  if (typeof dob !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) return true;
   const parts = dob.split('-').map(Number);
   const now = new Date();
   let age = now.getUTCFullYear() - parts[0];
@@ -72,7 +72,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
   if (req.url === '/api/live' && req.method === 'GET') {
-    const accessToken = (req.headers.authorization || '').replace(/^Bearer\\s+/i, '');
+    const accessToken = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     const authUser = await getAuthUser(accessToken);
     if (!authUser) { res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Authentication required' })); return; }
     const liveUsers = [];
