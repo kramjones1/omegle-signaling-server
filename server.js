@@ -96,18 +96,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.url.startsWith('/api/live/frame/') && req.method === 'GET') {
-    const auth = req.headers.authorization || '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-    if (!await supabaseUser(token)) { res.writeHead(401); res.end(); return; }
-    const userId = req.url.split('/api/live/frame/')[1].split('?')[0];
-    const frame = frames.get(userId);
-    if (frame) {
-      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-cache, no-store, must-revalidate' });
-      res.end(frame);
-    } else { res.writeHead(404); res.end(); }
-    return;
-  }
 
   res.writeHead(404);
   res.end('Not found');
