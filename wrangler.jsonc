@@ -1,4 +1,5 @@
 {
+  // Trigger fresh Cloudflare build after correcting the required-secret config.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "omegle-signaling-server",
   "main": "src/index.js",
