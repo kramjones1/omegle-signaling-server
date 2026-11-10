@@ -203,16 +203,16 @@ export class Matchmaker extends DurableObject {
       return json({ error: "WebSocket upgrade required" }, 426);
     }
 
+    // Match Belmo's lifecycle: complete the WebSocket upgrade first.
+    // Supabase authentication is performed when the client sends "find",
+    // before the session is allowed into the matching queue.
     const token = url.searchParams.get("access_token") || "";
-    const user = await authUser(this.env, token);
-    if (!user) return new Response("Authentication required", { status: 401 });
-
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     const id = newId();
     server.serializeAttachment({
       id,
-      userId: user.id,
+      userId: null,
       accessToken: token,
       partner: null,
       queued: false
@@ -232,6 +232,19 @@ export class Matchmaker extends DurableObject {
   }
 
   async enqueue(ws, data) {
+    // Authenticate after the socket is open, as the original Belmo server does.
+    // Never enqueue or match a socket until Supabase confirms its identity.
+    if (!data.userId) {
+      const user = await authUser(this.env, data.accessToken);
+      if (!user?.id) {
+        this.send(ws, { type: "auth_error", reason: "Authentication required. Please sign in again." });
+        try { ws.close(4401, "Authentication required"); } catch {}
+        return;
+      }
+      data.userId = user.id;
+      this.save(ws, data);
+    }
+
     try {
       const result = await this.eligibility(data);
       if (result.banned) {
