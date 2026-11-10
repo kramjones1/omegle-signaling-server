@@ -101,6 +101,28 @@ export default {
       });
     }
 
+    if (url.pathname === "/__ws-diagnostic" && request.method === "GET") {
+      const html = `<!doctype html>
+<html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LivMe WebSocket diagnostic</title>
+<style>body{font:16px system-ui;max-width:680px;margin:32px auto;padding:0 16px;background:#111;color:#eee}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#222;padding:16px;border-radius:8px}.ok{color:#70d890}.bad{color:#ff7777}</style>
+<h2>Cloudflare WebSocket test</h2>
+<p>This checks the Worker and Durable Object connection only. No login or camera is used.</p>
+<pre id="out">Starting test…</pre>
+<script>
+const out=document.getElementById('out');
+function log(s){out.textContent += "\\n"+new Date().toLocaleTimeString()+"  "+s;}
+out.textContent="Opening WebSocket…";
+const scheme=location.protocol==="https:"?"wss:":"ws:";
+const ws=new WebSocket(scheme+"//"+location.host+"/");
+ws.onopen=()=>{log("PASS: browser WebSocket handshake opened");};
+ws.onmessage=(e)=>{log("Message: "+e.data);try{const m=JSON.parse(e.data);if(m.type==="connected"){log("PASS: Durable Object sent connected message");ws.send(JSON.stringify({type:"find"}));}if(m.type==="auth_error"){log("Expected: unauthenticated diagnostic connection was rejected at find");}}catch{}};
+ws.onerror=()=>log("FAIL: WebSocket error (browser does not expose server details)");
+ws.onclose=(e)=>log("Closed: code="+e.code+" reason="+(e.reason||"(none)"));
+</script></html>`;
+      return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+    }
+
     if (url.pathname === "/" && request.method === "GET" &&
         request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
       return new Response("Omegle signaling service", {
