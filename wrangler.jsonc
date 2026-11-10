@@ -24,10 +24,5 @@
   ],
   "vars": {
     "SUPABASE_URL": "https://btkcubibosbtpxcronnd.supabase.co"
-  },
-  "secrets": {
-    "required": [
-      "SUPABASE_ANON_KEY"
-    ]
   }
 }
