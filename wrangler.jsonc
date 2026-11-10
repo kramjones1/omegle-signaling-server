@@ -17,10 +17,17 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["Matchmaker"]
+      "new_sqlite_classes": [
+        "Matchmaker"
+      ]
     }
   ],
   "vars": {
     "SUPABASE_URL": "https://btkcubibosbtpxcronnd.supabase.co"
+  },
+  "secrets": {
+    "required": [
+      "SUPABASE_ANON_KEY"
+    ]
   }
 }
