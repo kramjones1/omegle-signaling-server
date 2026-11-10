@@ -21,9 +21,14 @@ function newId() {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 }
 
+function getSupabaseApiKey(env) {
+  // Same public anon key already used by the frontend; retain the secret binding as fallback.
+  return env.SUPABASE_PUBLIC_ANON_KEY || env.SUPABASE_ANON_KEY || "";
+}
+
 async function authUser(env, token) {
   if (!token) return null;
-  const apiKey = env.SUPABASE_ANON_KEY || "";
+  const apiKey = getSupabaseApiKey(env) || "";
   console.log("Supabase API key runtime check:", {
     present: Boolean(apiKey),
     length: apiKey.length,
@@ -50,7 +55,7 @@ async function rpc(env, token, name, body) {
   const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${name}`, {
     method: "POST",
     headers: {
-      apikey: env.SUPABASE_ANON_KEY,
+      apikey: getSupabaseApiKey(env),
       authorization: `Bearer ${token}`,
       "content-type": "application/json"
     },
@@ -150,7 +155,7 @@ ws.onclose=(e)=>log("Closed: code="+e.code+" reason="+(e.reason||"(none)"));
       if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
     }
 
-    const mainWorkerKey = env.SUPABASE_ANON_KEY || "";
+    const mainWorkerKey = getSupabaseApiKey(env) || "";
     console.log("Supabase key check at Worker entrypoint:", {
       present: Boolean(mainWorkerKey),
       length: mainWorkerKey.length
@@ -163,7 +168,7 @@ ws.onclose=(e)=>log("Closed: code="+e.code+" reason="+(e.reason||"(none)"));
 export class Matchmaker extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
-    const durableObjectKey = env.SUPABASE_ANON_KEY || "";
+    const durableObjectKey = getSupabaseApiKey(env) || "";
     console.log("Supabase key check in Matchmaker constructor:", {
       present: Boolean(durableObjectKey),
       length: durableObjectKey.length
@@ -431,7 +436,7 @@ export class Matchmaker extends DurableObject {
             fetch(`${this.env.SUPABASE_URL}/rest/v1/reported_messages`, {
               method: "POST",
               headers: {
-                apikey: this.env.SUPABASE_ANON_KEY,
+                apikey: getSupabaseApiKey(this.env),
                 authorization: `Bearer ${data.accessToken}`,
                 "content-type": "application/json",
                 prefer: "return=minimal"
