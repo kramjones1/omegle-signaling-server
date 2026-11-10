@@ -174,9 +174,19 @@ wss.on('connection', async (ws, req) => {
         }
         break;
       }
-      case 'next':
-        disconnect(id);
+      case 'next': {
+        const p = peers.get(id);
+        if (!p) break;
+        if (p.partner) {
+          const partner = peers.get(p.partner);
+          if (partner) { partner.partner = null; try { partner.ws.send(JSON.stringify({ type: 'partner_left' })); } catch {} }
+          p.partner = null;
+        }
+        frames.delete(p.userId);
+        if (!queue.includes(id)) queue.push(id);
+        match();
         break;
+      }
       case 'frame': {
         const p = peers.get(id);
         if (p && p.partner && typeof msg.data === 'string' && msg.data.length <= 300000) {
