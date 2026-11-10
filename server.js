@@ -10,49 +10,60 @@ const queue = [];
 const peers = new Map(); // id -> { ws, id, userId, partner }
 const frames = new Map(); // userId -> Buffer (latest JPEG frame)
 
-async function isBanned(userId) {
-  if (!userId) return false;
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/is_user_banned`, {
-      method: 'POST',
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ check_id: userId }),
-    });
-    const data = await res.json();
-    return data === true;
-  } catch { return false; }
+async function getAuthUser(accessToken) {
+  if (!accessToken) return null;
+  const res = await fetch(SUPABASE_URL + '/auth/v1/user', {
+    headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + accessToken },
+  });
+  if (!res.ok) return null;
+  const user = await res.json();
+  return user && user.id ? user : null;
 }
 
-async function isUnderage(userId) {
-  if (!userId) return true;
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_dob`, {
-      method: 'POST',
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_id: userId }),
-    });
-    const data = await res.json();
-    if (!data) return true;
-    const bd = new Date(data);
-    const t = new Date();
-    let age = t.getFullYear() - bd.getFullYear();
-    const m = t.getMonth() - bd.getMonth();
-    if (m < 0 || (m === 0 && t.getDate() < bd.getDate())) age--;
-    return age < 18;
-  } catch { return true; }
+async function rpc(accessToken, functionName, body) {
+  const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + functionName, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    const error = new Error('Supabase RPC ' + functionName + ' failed (' + res.status + '): ' + detail.slice(0, 300));
+    error.status = res.status;
+    throw error;
+  }
+  return res.json();
 }
 
-async function getProfile(userId) {
+async function isBanned(userId, accessToken) {
+  if (!userId || !accessToken) throw new Error('Missing authenticated identity for ban check');
+  const result = await rpc(accessToken, 'is_user_banned', { check_id: userId });
+  if (typeof result !== 'boolean') throw new Error('Invalid ban-check response');
+  return result;
+}
+
+async function isUnderage(userId, accessToken) {
+  if (!userId || !accessToken) throw new Error('Missing authenticated identity for age check');
+  const dob = await rpc(accessToken, 'get_dob', { target_id: userId });
+  if (typeof dob !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dob)) return true;
+  const parts = dob.split('-').map(Number);
+  const now = new Date();
+  let age = now.getUTCFullYear() - parts[0];
+  const month = now.getUTCMonth() + 1;
+  if (month < parts[1] || (month === parts[1] && now.getUTCDate() < parts[2])) age--;
+  return age < 18;
+}
+
+async function getProfile(userId, accessToken) {
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/chat_profiles?user_id=eq.${userId}&select=display_name,avatar_url,bio`, {
-      headers: { 'apikey': SUPABASE_ANON_KEY },
-    });
-    const data = await res.json();
-    if (Array.isArray(data) && data.length > 0) return data[0];
-  } catch {}
+    const result = await rpc(accessToken, 'get_public_chat_profile', { target_user_id: userId });
+    if (Array.isArray(result) && result.length) {
+      const row = result[0];
+      return { display_name: row.display_name, avatar_url: row.avatar_url, bio: row.bio };
+    }
+  } catch (error) { console.error('get_public_chat_profile failed:', error.message); }
   return null;
 }
-
 // HTTP server for API endpoints
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -61,13 +72,16 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
   if (req.url === '/api/live' && req.method === 'GET') {
+    const accessToken = (req.headers.authorization || '').replace(/^Bearer\\s+/i, '');
+    const authUser = await getAuthUser(accessToken);
+    if (!authUser) { res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Authentication required' })); return; }
     const liveUsers = [];
     const seen = new Set();
 
     for (const [, p] of peers) {
       if (p.partner && p.userId && !seen.has(p.userId)) {
         seen.add(p.userId);
-        const profile = await getProfile(p.userId);
+        const profile = await getProfile(p.userId, accessToken);
         liveUsers.push({
           id: p.id,
           user_id: p.userId,
@@ -102,9 +116,13 @@ const server = http.createServer(async (req, res) => {
 
 const wss = new WebSocketServer({ server });
 
-wss.on('connection', (ws) => {
+wss.on('connection', async (ws, req) => {
   const id = uuidv4().slice(0, 8);
-  peers.set(id, { ws, id, userId: null, partner: null });
+  const requestUrl = new URL(req.url, 'http://' + (req.headers.host || 'localhost'));
+  const accessToken = requestUrl.searchParams.get('access_token');
+  const authUser = await getAuthUser(accessToken);
+  if (!authUser) { ws.close(4401, 'Authentication required'); return; }
+  peers.set(id, { ws, id, userId: authUser.id, accessToken, partner: null });
 
   ws.send(JSON.stringify({ type: 'connected', id }));
 
@@ -114,11 +132,10 @@ wss.on('connection', (ws) => {
 
     switch (msg.type) {
       case 'find': {
-        if (!peers.has(id)) peers.set(id, { ws, id, userId: null, partner: null });
         const p = peers.get(id);
-        p.userId = msg.userId || null;
-        if (p.userId) {
-          const [banned, underage] = await Promise.all([isBanned(p.userId), isUnderage(p.userId)]);
+        if (!p || !p.userId || !p.accessToken) { try { ws.send(JSON.stringify({ type: 'auth_error', reason: 'Authentication required. Please reconnect.' })); } catch {} ws.close(4401, 'Authentication required'); return; }
+        try {
+          const [banned, underage] = await Promise.all([isBanned(p.userId, p.accessToken), isUnderage(p.userId, p.accessToken)]);
           if (banned) {
             try { ws.send(JSON.stringify({ type: 'banned', reason: 'Your account has been suspended.' })); } catch {}
             return;
@@ -127,8 +144,12 @@ wss.on('connection', (ws) => {
             try { ws.send(JSON.stringify({ type: 'age_restricted', reason: 'Video chat is restricted to users 18 and older.' })); } catch {}
             return;
           }
+        } catch (error) {
+          console.error('Eligibility check failed:', error.message);
+          try { ws.send(JSON.stringify({ type: 'auth_error', reason: 'Unable to verify your account. Please reconnect and try again.' })); } catch {}
+          return;
         }
-        queue.push(id);
+        if (!queue.includes(id) && !p.partner) queue.push(id);
         match();
         break;
       }
@@ -172,7 +193,7 @@ wss.on('connection', (ws) => {
             if (reporterUid !== 'unknown' && reportedUid !== 'unknown') {
               fetch(`${SUPABASE_URL}/rest/v1/reported_messages`, {
                 method: 'POST',
-                headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+                headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + reporter.accessToken, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
                 body: JSON.stringify({ reporter_id: reporterUid, reported_user_id: reportedUid, message_text: msgText, call_session_id: msg.room || '' }),
               }).catch(() => {});
             }
@@ -193,12 +214,12 @@ setInterval(async () => {
   for (const [id, p] of peers) {
     if (p.partner && p.userId) {
       checks.push(
-        isBanned(p.userId).then(banned => {
+        isBanned(p.userId, p.accessToken).then(banned => {
           if (banned) {
             try { p.ws.send(JSON.stringify({ type: 'banned', reason: 'Your account has been suspended.' })); } catch {}
             disconnect(id);
           }
-        })
+        }).catch(error => { console.error('Periodic ban verification failed:', error.message); try { p.ws.send(JSON.stringify({ type: 'auth_error', reason: 'Unable to verify account status.' })); } catch {} disconnect(id); })
       );
     }
   }
