@@ -29,8 +29,13 @@ async function authUser(env, token) {
       authorization: `Bearer ${token}`
     }
   });
-  if (!response.ok) return null;
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => "")).slice(0, 300);
+    console.error("Supabase auth validation failed:", response.status, detail);
+    return null;
+  }
   const user = await response.json();
+  if (!user?.id) console.error("Supabase auth response did not include a user id");
   return user?.id ? user : null;
 }
 
