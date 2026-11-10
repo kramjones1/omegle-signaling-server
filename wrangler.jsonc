@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "omegle-signaling-cloudflare",
+  "name": "omegle-signaling-server",
   "main": "src/index.js",
   "compatibility_date": "2026-11-10",
   "observability": {
