@@ -12,12 +12,20 @@ const frames = new Map(); // userId -> Buffer (latest JPEG frame)
 
 async function getAuthUser(accessToken) {
   if (!accessToken) return null;
-  const res = await fetch(SUPABASE_URL + '/auth/v1/user', {
-    headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + accessToken },
-  });
-  if (!res.ok) return null;
-  const user = await res.json();
-  return user && user.id ? user : null;
+  try {
+    const res = await fetch(SUPABASE_URL + '/auth/v1/user', {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + accessToken },
+    });
+    if (!res.ok) {
+      console.error('Supabase user verification failed:', res.status);
+      return null;
+    }
+    const user = await res.json();
+    return user && user.id ? user : null;
+  } catch (error) {
+    console.error('Supabase user verification request failed:', error.message);
+    return null;
+  }
 }
 
 async function rpc(accessToken, functionName, body) {
@@ -70,6 +78,12 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', '*');
 
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+  if (req.url === '/health' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ status: 'ok', service: 'omegle-signaling-server', auth: 'supabase-user-jwt', build: 'age-auth-fix-v3' }));
+    return;
+  }
 
   if (req.url === '/api/live' && req.method === 'GET') {
     const accessToken = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
