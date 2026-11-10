@@ -46,9 +46,9 @@ async function isBanned(token, userId) {
 
 async function isUnderage(token, userId) {
   const dob = await rpc(token, 'get_dob', { target_id: userId });
-  if (typeof dob !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dob)) return true;
+  if (typeof dob !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) return true;
   const birth = new Date(`${dob}T00:00:00Z`);
-  if (Number.isNaN(birth.getTime())) return true;
+  if (Number.isNaN(birth.getTime()) || birth.toISOString().slice(0, 10) !== dob) return true;
   const now = new Date();
   let age = now.getUTCFullYear() - birth.getUTCFullYear();
   const month = now.getUTCMonth() - birth.getUTCMonth();
@@ -151,7 +151,7 @@ wss.on('connection', async (ws, req) => {
         break;
       }
       case 'leave':
-        disconnect(id);
+        leaveMatchmaking(id);
         break;
       case 'sdp':
       case 'ice': {
@@ -263,6 +263,24 @@ function match() {
     const room = uuidv4().slice(0, 8);
     pa.ws.send(JSON.stringify({ type: 'matched', partner: b, userId: pb.userId, room, role: 'offer' }));
     pb.ws.send(JSON.stringify({ type: 'matched', partner: a, userId: pa.userId, room, role: 'answer' }));
+  }
+}
+
+function leaveMatchmaking(id) {
+  const p = peers.get(id);
+  if (!p) return;
+
+  const idx = queue.indexOf(id);
+  if (idx >= 0) queue.splice(idx, 1);
+
+  if (p.userId) frames.delete(p.userId);
+  if (p.partner) {
+    const partner = peers.get(p.partner);
+    if (partner) {
+      partner.partner = null;
+      try { partner.ws.send(JSON.stringify({ type: 'partner_left' })); } catch {}
+    }
+    p.partner = null;
   }
 }
 
