@@ -5,11 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "deploy": "wrangler deploy"
   },
   "devDependencies": {
-    "wrangler": "^4.0.0",
-    "typescript": "^5.8.0"
+    "wrangler": "^4.0.0"
   }
 }
