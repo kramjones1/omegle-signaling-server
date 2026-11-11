@@ -326,6 +326,12 @@ export class Matchmaker extends DurableObject {
       return;
     }
 
+    // Re-read the Durable Object attachment after awaited eligibility checks;
+    // another message may have changed this socket's state in the meantime.
+    const latest = ws.deserializeAttachment();
+    if (!latest?.id || latest.partner || latest.queued) return;
+    data = latest;
+
     if (data.partner) await this.unpair(ws, data);
     const queue = await this.ctx.storage.get("queue") || [];
     if (!queue.includes(data.id)) queue.push(data.id);
@@ -338,7 +344,11 @@ export class Matchmaker extends DurableObject {
 
   async match() {
     let queue = await this.ctx.storage.get("queue") || [];
-    queue = queue.filter((id, index) => queue.indexOf(id) === index && this.sessionById(id));
+    queue = queue.filter((id, index) => {
+      if (queue.indexOf(id) !== index) return false;
+      const session = this.sessionById(id);
+      return !!session && session.data.queued && !session.data.partner;
+    });
     while (queue.length >= 2) {
       const aId = queue.shift();
       let bIndex = queue.findIndex((candidate) => {
