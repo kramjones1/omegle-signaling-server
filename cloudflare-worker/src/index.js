@@ -337,9 +337,29 @@ export class Matchmaker extends DurableObject {
     } catch { return; }
 
     switch (msg.type) {
-      case "find":
-        await this.enqueue(ws, data);
+      case "find": {
+        // Refresh the socket's stored JWT at the moment the user starts searching.
+        // A WebSocket can remain open after the browser refreshes its Supabase session.
+        const freshToken = typeof msg.accessToken === "string" ? msg.accessToken : "";
+        if (!freshToken) {
+          this.send(ws, { type: "auth_error", reason: "Your session needs refreshing. Please try again." });
+          break;
+        }
+        try {
+          const user = await authUser(this.env, freshToken);
+          if (!user || user.id !== data.userId) {
+            this.send(ws, { type: "auth_error", reason: "Your session is no longer valid. Please sign in again." });
+            break;
+          }
+          data.accessToken = freshToken;
+          this.save(ws, data);
+          await this.enqueue(ws, data);
+        } catch (error) {
+          console.error("Find-session refresh failed:", error.message);
+          this.send(ws, { type: "auth_error", reason: "Unable to refresh your session. Please try again." });
+        }
         break;
+      }
       case "leave":
         await this.remove(ws);
         break;
