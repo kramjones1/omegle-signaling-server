@@ -344,8 +344,10 @@ export class Matchmaker extends DurableObject {
       const room = newId();
       a.data.partner = bId;
       a.data.queued = false;
+      a.data.room = room;
       b.data.partner = aId;
       b.data.queued = false;
+      b.data.room = room;
       this.save(a.ws, a.data);
       this.save(b.ws, b.data);
       this.send(a.ws, { type: "matched", partner: bId, userId: b.data.userId, room, role: "offer" });
@@ -357,16 +359,19 @@ export class Matchmaker extends DurableObject {
 
   async unpair(ws, data) {
     const partnerId = data.partner;
+    const oldRoom = data.room || null;
     data.partner = null;
     data.queued = false;
+    data.room = null;
     this.save(ws, data);
     if (partnerId) {
       const partner = this.sessionById(partnerId);
       if (partner) {
         partner.data.partner = null;
         partner.data.queued = false;
+        partner.data.room = null;
         this.save(partner.ws, partner.data);
-        this.send(partner.ws, { type: "partner_left" });
+        this.send(partner.ws, { type: "partner_left", room: oldRoom });
       }
     }
   }
@@ -401,7 +406,7 @@ export class Matchmaker extends DurableObject {
 
     switch (msg.type) {
       case "find":
-        await this.enqueue(ws, data);
+        if (!data.partner && !data.queued) await this.enqueue(ws, data);
         break;
       case "leave":
         await this.remove(ws);
@@ -413,9 +418,10 @@ export class Matchmaker extends DurableObject {
       }
       case "sdp":
       case "ice": {
-        if (data.partner) {
+        if (data.partner && data.room && msg.room === data.room) {
           const partner = this.sessionById(data.partner);
-          if (partner) this.send(partner.ws, { ...msg, from: data.id });
+          if (partner && partner.data.partner === data.id && partner.data.room === data.room)
+            this.send(partner.ws, { ...msg, from: data.id, room: data.room });
         }
         break;
       }
@@ -429,7 +435,7 @@ export class Matchmaker extends DurableObject {
         break;
       }
       case "report": {
-        if (data.partner && data.partner === msg.target) {
+        if (data.partner && data.partner === msg.target && data.room && msg.room === data.room) {
           const reported = this.sessionById(data.partner);
           if (reported) this.send(reported.ws, { type: "reported" });
           if (reported && data.accessToken) {
@@ -474,8 +480,9 @@ export class Matchmaker extends DurableObject {
       if (partner) {
         partner.data.partner = null;
         partner.data.queued = false;
+        partner.data.room = null;
         this.save(partner.ws, partner.data);
-        this.send(partner.ws, { type: "partner_left" });
+        this.send(partner.ws, { type: "partner_left", room: data.room || null });
       }
     }
     const queue = (await this.ctx.storage.get("queue") || []).filter((id) => id !== data.id);
