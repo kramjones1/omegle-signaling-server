@@ -222,11 +222,19 @@ export class Matchmaker extends DurableObject {
   }
 
   async eligibility(data) {
-    if (!data?.userId || !data?.accessToken) throw new Error("Missing authenticated identity");
-    const [banned, underage] = await Promise.all([
-      isBanned(this.env, data.userId, data.accessToken),
-      isUnderage(this.env, data.userId, data.accessToken)
-    ]);
+    if (!data?.userId || !data?.accessToken) throw new Error("IDENTITY_CHECK_FAILED");
+    let banned;
+    try {
+      banned = await isBanned(this.env, data.userId, data.accessToken);
+    } catch (error) {
+      throw new Error("BAN_CHECK_FAILED: " + (error?.message || "unknown error"));
+    }
+    let underage;
+    try {
+      underage = await isUnderage(this.env, data.userId, data.accessToken);
+    } catch (error) {
+      throw new Error("AGE_CHECK_FAILED: " + (error?.message || "unknown error"));
+    }
     return { banned, underage };
   }
 
@@ -242,10 +250,19 @@ export class Matchmaker extends DurableObject {
         return;
       }
     } catch (error) {
-      console.error("Eligibility check failed:", error.message);
+      const detail = error?.message || "UNKNOWN_ELIGIBILITY_ERROR";
+      const code = detail.startsWith("BAN_CHECK_FAILED:") ? "BAN_CHECK_FAILED"
+        : detail.startsWith("AGE_CHECK_FAILED:") ? "AGE_CHECK_FAILED"
+        : detail.startsWith("IDENTITY_CHECK_FAILED") ? "IDENTITY_CHECK_FAILED"
+        : "ELIGIBILITY_CHECK_FAILED";
+      console.error("Eligibility check failed:", detail);
       this.send(ws, {
         type: "auth_error",
-        reason: "Unable to verify your account. Please reconnect and try again."
+        reason: code === "BAN_CHECK_FAILED"
+          ? "Authentication passed, but account suspension verification failed (BAN_CHECK_FAILED)."
+          : code === "AGE_CHECK_FAILED"
+            ? "Authentication passed, but age verification failed (AGE_CHECK_FAILED)."
+            : "Account authentication or eligibility verification failed (" + code + ")."
       });
       return;
     }
