@@ -21,7 +21,7 @@ jobs:
           node-version: 22
       - name: Install Worker dependencies
         working-directory: cloudflare-worker
-        run: npm ci
+        run: npm install
       - name: Deploy staging Worker only
         working-directory: cloudflare-worker
         run: npx wrangler deploy --env staging
