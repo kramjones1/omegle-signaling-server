@@ -1,4 +1,5 @@
 name: Deploy production Cloudflare signaling Worker
+# Production deploy source is cloudflare-worker-deploy.
 
 on:
   workflow_dispatch:
