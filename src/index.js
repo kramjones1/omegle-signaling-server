@@ -114,7 +114,7 @@ export default {
         status: "ok",
         service: "omegle-signaling-cloudflare",
         auth: "supabase-user-jwt",
-        build: "cloudflare-migration-v1"
+        build: "random-chat-room-routing-v2"
       });
     }
 
