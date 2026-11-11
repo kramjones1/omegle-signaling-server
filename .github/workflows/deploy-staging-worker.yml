@@ -1,0 +1,30 @@
+name: Deploy isolated staging signaling Worker
+
+on:
+  push:
+    branches:
+      - cloudflare-worker-deploy
+    paths:
+      - "cloudflare-worker/**"
+      - ".github/workflows/deploy-staging-worker.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Worker dependencies
+        working-directory: cloudflare-worker
+        run: npm ci
+      - name: Deploy staging Worker only
+        working-directory: cloudflare-worker
+        run: npx wrangler deploy --env staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
