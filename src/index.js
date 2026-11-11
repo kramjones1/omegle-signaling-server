@@ -114,7 +114,7 @@ export default {
         status: "ok",
         service: "omegle-signaling-cloudflare",
         auth: "supabase-user-jwt",
-        build: "random-chat-room-routing-v2"
+        build: "random-chat-guarded-pairing-v3"
       });
     }
 
@@ -298,6 +298,15 @@ export class Matchmaker extends DurableObject {
       this.save(ws, data);
     }
 
+    // One live random-chat session per account. Close older tabs/sockets
+    // before allowing this socket into the queue so one account cannot occupy
+    // multiple queue slots or receive multiple simultaneous partners.
+    for (const existing of this.sessions()) {
+      if (existing.ws !== ws && existing.data.userId === data.userId) {
+        await this.remove(existing.ws);
+      }
+    }
+
     try {
       const result = await this.eligibility(data);
       if (result.banned) {
@@ -344,7 +353,11 @@ export class Matchmaker extends DurableObject {
       const [bId] = queue.splice(bIndex, 1);
       const a = this.sessionById(aId);
       const b = this.sessionById(bId);
-      if (!a || !b) continue;
+      // Revalidate immediately before committing a pair. Queue entries may
+      // have become stale while authentication/eligibility checks were pending.
+      if (!a || !b || a.ws.readyState !== WebSocket.OPEN || b.ws.readyState !== WebSocket.OPEN ||
+          !a.data.queued || !b.data.queued || a.data.partner || b.data.partner ||
+          !a.data.userId || !b.data.userId || a.data.userId === b.data.userId) continue;
       const room = newId();
       a.data.partner = bId;
       a.data.queued = false;
@@ -370,7 +383,9 @@ export class Matchmaker extends DurableObject {
     this.save(ws, data);
     if (partnerId) {
       const partner = this.sessionById(partnerId);
-      if (partner) {
+      // Never clear a partner's newer room because of a delayed leave/next
+      // event from an older pairing.
+      if (partner && partner.data.partner === data.id && partner.data.room === oldRoom) {
         partner.data.partner = null;
         partner.data.queued = false;
         partner.data.room = null;
@@ -431,9 +446,10 @@ export class Matchmaker extends DurableObject {
         // New clients must echo the room ID. Older production clients did not
         // include it, so preserve their existing calls while attaching the
         // authoritative room to the forwarded signal.
-        if (data.partner && data.room && (!msg.room || msg.room === data.room)) {
+        if (data.partner && data.room && msg.room === data.room) {
           const partner = this.sessionById(data.partner);
-          if (partner && partner.data.partner === data.id && partner.data.room === data.room)
+          if (partner && partner.ws.readyState === WebSocket.OPEN &&
+              partner.data.partner === data.id && partner.data.room === data.room)
             this.send(partner.ws, { ...msg, from: data.id, room: data.room });
         }
         break;
