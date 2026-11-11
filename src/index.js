@@ -411,6 +411,12 @@ export class Matchmaker extends DurableObject {
       case "leave":
         await this.remove(ws);
         break;
+      case "end": {
+        // A peer connection can fail without the WebSocket closing. Unpair only
+        // the room named by that client so a stale failure cannot end a new match.
+        if (data.partner && data.room && msg.room === data.room) await this.unpair(ws, data);
+        break;
+      }
       case "next": {
         await this.unpair(ws, data);
         await this.enqueue(ws, data);
