@@ -424,7 +424,10 @@ export class Matchmaker extends DurableObject {
       }
       case "sdp":
       case "ice": {
-        if (data.partner && data.room && msg.room === data.room) {
+        // New clients must echo the room ID. Older production clients did not
+        // include it, so preserve their existing calls while attaching the
+        // authoritative room to the forwarded signal.
+        if (data.partner && data.room && (!msg.room || msg.room === data.room)) {
           const partner = this.sessionById(data.partner);
           if (partner && partner.data.partner === data.id && partner.data.room === data.room)
             this.send(partner.ws, { ...msg, from: data.id, room: data.room });
