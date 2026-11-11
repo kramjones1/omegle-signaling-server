@@ -430,9 +430,9 @@ export class Matchmaker extends DurableObject {
           await this.remove(ws);
         }
       } catch (error) {
-        console.error("Periodic ban verification failed:", error.message);
-        this.send(ws, { type: "auth_error", reason: "Unable to verify account status." });
-        await this.remove(ws);
+        // A transient Supabase/network failure is not proof that the user is banned.
+        // Keep the active call alive and retry on the next scheduled alarm.
+        console.error("Periodic ban verification failed; keeping session and retrying:", error.message);
       }
     }
     await this.updateBanAlarm();
