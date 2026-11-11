@@ -17,10 +17,37 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["Matchmaker"]
+      "new_sqlite_classes": [
+        "Matchmaker"
+      ]
     }
   ],
   "vars": {
     "SUPABASE_URL": "https://btkcubibosbtpxcronnd.supabase.co"
+  },
+  "env": {
+    "staging": {
+      "name": "omegle-signaling-staging",
+      "compatibility_date": "2026-11-10",
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "MATCHMAKER",
+            "class_name": "Matchmaker"
+          }
+        ]
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "new_sqlite_classes": [
+            "Matchmaker"
+          ]
+        }
+      ],
+      "vars": {
+        "SUPABASE_URL": "https://btkcubibosbtpxcronnd.supabase.co"
+      }
+    }
   }
 }
