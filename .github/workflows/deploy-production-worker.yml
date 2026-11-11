@@ -1,5 +1,5 @@
 name: Deploy production Cloudflare signaling Worker
-# Production deploy source is cloudflare-worker-deploy. Triggered after eligibility diagnostics update.
+# Production deploy source is cloudflare-worker-deploy. Triggered for Worker production fixes.
 
 on:
   workflow_dispatch:
