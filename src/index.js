@@ -160,7 +160,11 @@ ws.onclose=(e)=>log("Closed: code="+e.code+" reason="+(e.reason||"(none)"));
       present: Boolean(mainWorkerKey),
       length: mainWorkerKey.length
     });
-    const id = env.MATCHMAKER.idFromName("global-matchmaker");
+    // Keep pre-production preview traffic in a separate Durable Object queue
+    // while production continues using the existing global matchmaker.
+    const environment = url.searchParams.get("environment") === "staging" ? "staging" : "production";
+    const matchmakerName = environment === "staging" ? "staging-matchmaker" : "global-matchmaker";
+    const id = env.MATCHMAKER.idFromName(matchmakerName);
     return env.MATCHMAKER.get(id).fetch(request);
   }
 };
